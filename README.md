@@ -73,16 +73,24 @@
 
 Чтобы добавить ссылку в файл Readme.md, нужно использовать синтаксис Markdown. Это делают так:
 
-```markdown
-[Текст ссылки](URL)
+```plantuml
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+title Smart Home System - Context Diagram
+
+Person(customer, "Smart home customer", "A customer of the smart home system")
+
+System(warmHouse, "Warm House System", "Allows customers to view monitoring data, control iot")
+
+System_Ext(iotManagement, "IoT Managment System", "Description of external software system.")
+
+Rel(customer, warmHouse, "e.g. Visits pages")
+Rel(warmHouse, iotManagement, "e.g. Visits pages")
+Rel(iotManagement, warmHouse, "e.g. Visits pages")
+
+@enduml
 ```
-
-Замените `Текст ссылки` текстом, который хотите использовать для ссылки. Вместо `URL` вставьте адрес, на который должна вести ссылка. Например:
-
-```markdown
-[Посетите Яндекс](https://ya.ru/)
-```
-
 # Задание 2. Проектирование микросервисной архитектуры
 
 В этом задании вам нужно предоставить только диаграммы в модели C4. Мы не просим вас отдельно описывать получившиеся микросервисы и то, как вы определили взаимодействия между компонентами To-Be системы. Если вы правильно подготовите диаграммы C4, они и так это покажут.
@@ -179,11 +187,3 @@ Locations - название комнаты, sensorId - идентификато
 2. Обеспечьте взаимодействие между микросервисами и монолитом (при желании с помощью брокера сообщений), чтобы постепенно перенести функциональность из монолита в микросервисы. 
 
 В результате у вас должны быть созданы Dockerfiles и docker-compose для запуска микросервисов. 
-
-```mermaid
-graph TD;
-    A-->B;
-    A-->C;
-    B-->D;
-    C-->D;
-```

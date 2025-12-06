@@ -97,7 +97,7 @@ Rel(warm_home_system, iot_devices, "Запрос телеметрии темпе
 @enduml
 ```
 
-![c4_context](image.png)
+![c4_context](/readme-assert/image.png)
 # Задание 2. Проектирование микросервисной архитектуры
 
 TO BE DDD:
@@ -123,7 +123,7 @@ TO BE DDD:
 
 
 **Диаграмма контейнеров (Containers)**
-![alt text](c4_container.png)
+![alt text](/readme-assert/c4_container.png)
 ```plantuml
 @startuml C4_Container_Warm_House
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
@@ -250,7 +250,7 @@ Rel(iot_device_gateway, iot_camera_devices, "Отправляет команды
 ```
 
 **Диаграмма компонентов (Components)**
-![alt text](image-1.png)
+![alt text](/readme-assert/image-1.png)
 ```plantuml
 @startuml C4_Component_IoT_Device_Gateway
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
@@ -332,7 +332,7 @@ Rel(kafka_commands, command_subscriber, "Читает команды для ус
 ```
 
 **Диаграмма кода (Code)**
-![alt text](image-2.png)
+![alt text](/readme-assert/image-2.png)
 
 ```plantuml
 @startuml Device_Registry_Code
@@ -405,7 +405,7 @@ PostgresRepository ..|> DeviceRepository : реализует
 ```
 
 # Задание 3. Разработка ER-диаграммы
-![alt text](image-4.png)
+![alt text](/readme-assert/image-4.png)
 ```plantuml
 @startuml ER Diagram
 title ER Diagram

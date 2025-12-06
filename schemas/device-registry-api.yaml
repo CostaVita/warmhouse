@@ -1,0 +1,576 @@
+openapi: 3.0.3
+info:
+  title: Device Registry Service API
+  description: |
+    API для управления реестром IoT-устройств в системе "Тёплый дом".
+    Сервис обеспечивает регистрацию, обновление, удаление и получение информации об устройствах.
+    
+    Сервис используется другими микросервисами для получения метаданных устройств
+    и управления их жизненным циклом.
+  version: 1.0.0
+  contact:
+    name: Warm House Team
+    email: support@warmhouse.local
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Локальный сервер разработки
+tags:
+  - name: devices
+    description: Операции с устройствами
+
+paths:
+  /devices:
+    get:
+      tags:
+        - devices
+      summary: Получить список устройств
+      description: |
+        Возвращает список устройств с возможностью фильтрации по типу, статусу, владельцу и другим параметрам.
+        Поддерживает пагинацию для больших наборов данных.
+      operationId: listDevices
+      parameters:
+        - name: type
+          in: query
+          description: Фильтр по типу устройства
+          schema:
+            $ref: '#/components/schemas/DeviceType'
+        - name: status
+          in: query
+          description: Фильтр по статусу устройства
+          schema:
+            $ref: '#/components/schemas/DeviceStatus'
+        - name: owner_id
+          in: query
+          description: Фильтр по идентификатору владельца
+          schema:
+            type: string
+            format: uuid
+        - name: manufacturer
+          in: query
+          description: Фильтр по производителю
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Максимальное количество устройств в ответе
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Смещение для пагинации
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Успешный ответ со списком устройств
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  devices:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Device'
+                  total:
+                    type: integer
+                    description: Общее количество устройств, соответствующих фильтрам
+                  limit:
+                    type: integer
+                    description: Максимальное количество устройств в ответе
+                  offset:
+                    type: integer
+                    description: Смещение для пагинации
+              examples:
+                success:
+                  summary: Успешный ответ
+                  value:
+                    devices:
+                      - device_id: "550e8400-e29b-41d4-a716-446655440000"
+                        name: "Датчик температуры в гостиной"
+                        owner_id: "123e4567-e89b-12d3-a456-426614174000"
+                        manufacturer: "Xiaomi"
+                        model: "Mi Temperature Sensor 2"
+                        type: "SENSOR"
+                        status: "ACTIVE"
+                        metadata:
+                          location: "Гостиная"
+                          room_id: "room-001"
+                        created_at: "2024-01-15T10:30:00Z"
+                        updated_at: "2024-01-20T14:22:00Z"
+                    total: 1
+                    limit: 20
+                    offset: 0
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - devices
+      summary: Зарегистрировать новое устройство
+      description: |
+        Регистрирует новое IoT-устройство в системе. Устройство получает уникальный идентификатор
+        и начальный статус REGISTERED. После регистрации устройство может быть активировано.
+      operationId: registerDevice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceCreate'
+            examples:
+              temperature_sensor:
+                summary: Датчик температуры
+                value:
+                  name: "Датчик температуры в спальне"
+                  owner_id: "123e4567-e89b-12d3-a456-426614174000"
+                  manufacturer: "Xiaomi"
+                  model: "Mi Temperature Sensor 2"
+                  type: "SENSOR"
+                  metadata:
+                    location: "Спальня"
+                    room_id: "room-002"
+                    protocol: "MQTT"
+              thermostat:
+                summary: Термостат
+                value:
+                  name: "Умный термостат"
+                  owner_id: "123e4567-e89b-12d3-a456-426614174000"
+                  manufacturer: "Nest"
+                  model: "Learning Thermostat 3"
+                  type: "THERMOSTAT"
+                  metadata:
+                    location: "Гостиная"
+                    room_id: "room-001"
+                    protocol: "MQTT"
+      responses:
+        '201':
+          description: Устройство успешно зарегистрировано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+              examples:
+                created:
+                  summary: Успешно созданное устройство
+                  value:
+                    device_id: "550e8400-e29b-41d4-a716-446655440000"
+                    name: "Датчик температуры в спальне"
+                    owner_id: "123e4567-e89b-12d3-a456-426614174000"
+                    manufacturer: "Xiaomi"
+                    model: "Mi Temperature Sensor 2"
+                    type: "SENSOR"
+                    status: "REGISTERED"
+                    metadata:
+                      location: "Спальня"
+                      room_id: "room-002"
+                      protocol: "MQTT"
+                    created_at: "2024-01-15T10:30:00Z"
+                    updated_at: "2024-01-15T10:30:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Устройство с такими параметрами уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                conflict:
+                  summary: Конфликт
+                  value:
+                    error: "Device with this manufacturer and model already exists for this owner"
+                    code: "DEVICE_ALREADY_EXISTS"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /devices/{device_id}:
+    get:
+      tags:
+        - devices
+      summary: Получить информацию об устройстве
+      description: |
+        Возвращает полную информацию об устройстве по его идентификатору,
+        включая метаданные и историю изменений статуса.
+      operationId: getDevice
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          description: Уникальный идентификатор устройства
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Успешный ответ с информацией об устройстве
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+              examples:
+                success:
+                  summary: Успешный ответ
+                  value:
+                    device_id: "550e8400-e29b-41d4-a716-446655440000"
+                    name: "Датчик температуры в гостиной"
+                    owner_id: "123e4567-e89b-12d3-a456-426614174000"
+                    manufacturer: "Xiaomi"
+                    model: "Mi Temperature Sensor 2"
+                    type: "SENSOR"
+                    status: "ACTIVE"
+                    metadata:
+                      location: "Гостиная"
+                      room_id: "room-001"
+                      protocol: "MQTT"
+                      firmware_version: "1.2.3"
+                    created_at: "2024-01-15T10:30:00Z"
+                    updated_at: "2024-01-20T14:22:00Z"
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - devices
+      summary: Обновить устройство
+      description: |
+        Обновляет информацию об устройстве. Позволяет изменить название, метаданные,
+        статус и другие параметры устройства. Все поля, кроме device_id, могут быть обновлены.
+      operationId: updateDevice
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          description: Уникальный идентификатор устройства
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceUpdate'
+            examples:
+              update_name:
+                summary: Обновление названия
+                value:
+                  name: "Датчик температуры в гостиной (обновлено)"
+              update_status:
+                summary: Изменение статуса
+                value:
+                  status: "INACTIVE"
+              update_metadata:
+                summary: Обновление метаданных
+                value:
+                  metadata:
+                    location: "Кухня"
+                    room_id: "room-003"
+                    firmware_version: "1.3.0"
+      responses:
+        '200':
+          description: Устройство успешно обновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+              examples:
+                updated:
+                  summary: Обновленное устройство
+                  value:
+                    device_id: "550e8400-e29b-41d4-a716-446655440000"
+                    name: "Датчик температуры в гостиной (обновлено)"
+                    owner_id: "123e4567-e89b-12d3-a456-426614174000"
+                    manufacturer: "Xiaomi"
+                    model: "Mi Temperature Sensor 2"
+                    type: "SENSOR"
+                    status: "ACTIVE"
+                    metadata:
+                      location: "Гостиная"
+                      room_id: "room-001"
+                    created_at: "2024-01-15T10:30:00Z"
+                    updated_at: "2024-01-21T09:15:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - devices
+      summary: Удалить устройство
+      description: |
+        Удаляет устройство из реестра. Операция необратима. После удаления устройство
+        не может быть использовано другими сервисами системы. Рекомендуется сначала
+        изменить статус на INACTIVE перед удалением.
+      operationId: deleteDevice
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          description: Уникальный идентификатор устройства
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Устройство успешно удалено
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Невозможно удалить устройство (например, используется в активных сценариях)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                conflict:
+                  summary: Конфликт при удалении
+                  value:
+                    error: "Device is currently used in active scenarios and cannot be deleted"
+                    code: "DEVICE_IN_USE"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  schemas:
+    Device:
+      type: object
+      required:
+        - device_id
+        - name
+        - owner_id
+        - manufacturer
+        - model
+        - type
+        - status
+        - created_at
+        - updated_at
+      properties:
+        device_id:
+          type: string
+          format: uuid
+          description: Уникальный идентификатор устройства
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        name:
+          type: string
+          description: Название устройства
+          example: "Датчик температуры в гостиной"
+        owner_id:
+          type: string
+          format: uuid
+          description: Идентификатор владельца устройства
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        manufacturer:
+          type: string
+          description: Производитель устройства
+          example: "Xiaomi"
+        model:
+          type: string
+          description: Модель устройства
+          example: "Mi Temperature Sensor 2"
+        type:
+          $ref: '#/components/schemas/DeviceType'
+        status:
+          $ref: '#/components/schemas/DeviceStatus'
+        metadata:
+          type: object
+          description: Дополнительные метаданные устройства (ключ-значение)
+          additionalProperties:
+            type: string
+          example:
+            location: "Гостиная"
+            room_id: "room-001"
+            protocol: "MQTT"
+            firmware_version: "1.2.3"
+        created_at:
+          type: string
+          format: date-time
+          description: Дата и время создания записи
+          example: "2024-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Дата и время последнего обновления
+          example: "2024-01-20T14:22:00Z"
+
+    DeviceCreate:
+      type: object
+      required:
+        - name
+        - owner_id
+        - manufacturer
+        - model
+        - type
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Название устройства
+          example: "Датчик температуры в спальне"
+        owner_id:
+          type: string
+          format: uuid
+          description: Идентификатор владельца устройства
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        manufacturer:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Производитель устройства
+          example: "Xiaomi"
+        model:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Модель устройства
+          example: "Mi Temperature Sensor 2"
+        type:
+          $ref: '#/components/schemas/DeviceType'
+        status:
+          $ref: '#/components/schemas/DeviceStatus'
+          description: Начальный статус устройства (по умолчанию REGISTERED)
+          default: REGISTERED
+        metadata:
+          type: object
+          description: Дополнительные метаданные устройства
+          additionalProperties:
+            type: string
+          example:
+            location: "Спальня"
+            room_id: "room-002"
+            protocol: "MQTT"
+
+    DeviceUpdate:
+      type: object
+      description: Поля для обновления устройства (все поля опциональны)
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Название устройства
+          example: "Датчик температуры в гостиной (обновлено)"
+        manufacturer:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Производитель устройства
+          example: "Xiaomi"
+        model:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Модель устройства
+          example: "Mi Temperature Sensor 2"
+        type:
+          $ref: '#/components/schemas/DeviceType'
+          description: Тип устройства
+        status:
+          $ref: '#/components/schemas/DeviceStatus'
+          description: Статус устройства
+        metadata:
+          type: object
+          description: Дополнительные метаданные устройства (полностью заменяет существующие)
+          additionalProperties:
+            type: string
+          example:
+            location: "Кухня"
+            room_id: "room-003"
+            firmware_version: "1.3.0"
+
+    DeviceType:
+      type: string
+      enum:
+        - SENSOR
+        - THERMOSTAT
+        - LIGHT
+        - CAMERA
+        - GATE
+      description: Тип IoT-устройства
+      example: "SENSOR"
+
+    DeviceStatus:
+      type: string
+      enum:
+        - REGISTERED
+        - ACTIVE
+        - INACTIVE
+        - MAINTENANCE
+      description: Статус устройства в системе
+      example: "ACTIVE"
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Сообщение об ошибке
+          example: "Device not found"
+        code:
+          type: string
+          description: Код ошибки для программной обработки
+          example: "DEVICE_NOT_FOUND"
+        details:
+          type: object
+          description: Дополнительные детали об ошибке
+          additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            validation_error:
+              summary: Ошибка валидации
+              value:
+                error: "Validation failed"
+                code: "VALIDATION_ERROR"
+                details:
+                  field: "name"
+                  message: "Name is required"
+
+    NotFound:
+      description: Устройство не найдено
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            not_found:
+              summary: Устройство не найдено
+              value:
+                error: "Device not found"
+                code: "DEVICE_NOT_FOUND"
+
+    InternalServerError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            server_error:
+              summary: Ошибка сервера
+              value:
+                error: "Internal server error"
+                code: "INTERNAL_ERROR"
+

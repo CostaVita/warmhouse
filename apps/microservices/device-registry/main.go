@@ -9,27 +9,22 @@ import (
 	"syscall"
 	"time"
 
-	"smarthome/handlers"
-	"smarthome/services"
+	"device-registry/db"
+	"device-registry/handlers"
 
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
-	// Initialize device registry service
-	deviceServiceURL := getEnv("DEVICE_SERVICE_URL", "http://device-registry:8082")
-	deviceService := services.NewDeviceService(deviceServiceURL)
-	log.Printf("Device registry service initialized with URL: %s\n", deviceServiceURL)
+	// Set up database connection
+	dbURL := getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/smarthome")
+	database, err := db.New(dbURL)
+	if err != nil {
+		log.Fatalf("Unable to connect to database: %v\n", err)
+	}
+	defer database.Close()
 
-	// Initialize telemetry service
-	telemetryServiceURL := getEnv("TELEMETRY_SERVICE_URL", "http://telemetry-service:8083")
-	telemetryService := services.NewTelemetryService(telemetryServiceURL)
-	log.Printf("Telemetry service initialized with URL: %s\n", telemetryServiceURL)
-
-	// Initialize temperature service
-	temperatureAPIURL := getEnv("TEMPERATURE_API_URL", "http://temperature-api:8081")
-	temperatureService := services.NewTemperatureService(temperatureAPIURL)
-	log.Printf("Temperature service initialized with API URL: %s\n", temperatureAPIURL)
+	log.Println("Connected to database successfully")
 
 	// Initialize router
 	router := gin.Default()
@@ -44,19 +39,19 @@ func main() {
 	// API routes
 	apiRoutes := router.Group("/api/v1")
 
-	// Register sensor routes
-	sensorHandler := handlers.NewSensorHandler(deviceService, telemetryService, temperatureService)
-	sensorHandler.RegisterRoutes(apiRoutes)
+	// Register device routes
+	deviceHandler := handlers.NewDeviceHandler(database)
+	deviceHandler.RegisterRoutes(apiRoutes)
 
 	// Start server
 	srv := &http.Server{
-		Addr:    getEnv("PORT", ":8080"),
+		Addr:    getEnv("PORT", ":8082"),
 		Handler: router,
 	}
 
 	// Start the server in a goroutine
 	go func() {
-		log.Printf("Server starting on %s\n", srv.Addr)
+		log.Printf("Device Registry Service starting on %s\n", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v\n", err)
 		}
@@ -86,3 +81,4 @@ func getEnv(key, defaultValue string) string {
 	}
 	return value
 }
+

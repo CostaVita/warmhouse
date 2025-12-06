@@ -1,13 +1,11 @@
 package handlers
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 
-	"smarthome/db"
 	"smarthome/models"
 	"smarthome/services"
 
@@ -16,14 +14,20 @@ import (
 
 // SensorHandler handles sensor-related requests
 type SensorHandler struct {
-	DB                 *db.DB
+	DeviceService      *services.DeviceService
+	TelemetryService   *services.TelemetryService
 	TemperatureService *services.TemperatureService
 }
 
 // NewSensorHandler creates a new SensorHandler
-func NewSensorHandler(db *db.DB, temperatureService *services.TemperatureService) *SensorHandler {
+func NewSensorHandler(
+	deviceService *services.DeviceService,
+	telemetryService *services.TelemetryService,
+	temperatureService *services.TemperatureService,
+) *SensorHandler {
 	return &SensorHandler{
-		DB:                 db,
+		DeviceService:      deviceService,
+		TelemetryService:   telemetryService,
 		TemperatureService: temperatureService,
 	}
 }
@@ -44,26 +48,52 @@ func (h *SensorHandler) RegisterRoutes(router *gin.RouterGroup) {
 
 // GetSensors handles GET /api/v1/sensors
 func (h *SensorHandler) GetSensors(c *gin.Context) {
-	sensors, err := h.DB.GetSensors(context.Background())
+	// Get devices from device-registry
+	devices, err := h.DeviceService.GetDevices()
 	if err != nil {
+		log.Printf("Error getting devices from device-registry: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Update temperature sensors with real-time data from the external API
-	for i, sensor := range sensors {
+	// Get telemetry for all devices and combine with device data
+	var sensors []models.Sensor
+	for _, device := range devices {
+		sensor := models.Sensor{
+			ID:          device.ID,
+			Name:        device.Name,
+			Type:        models.SensorType(device.Type),
+			Location:    device.Location,
+			Unit:        device.Unit,
+			Status:      device.Status,
+			LastUpdated: device.LastUpdated,
+			CreatedAt:   device.CreatedAt,
+			Value:       0, // Default value
+		}
+
+		// Get telemetry data for this device
+		telemetry, err := h.TelemetryService.GetTelemetry(device.ID)
+		if err == nil {
+			sensor.Value = telemetry.Value
+			sensor.Status = telemetry.Status
+			sensor.LastUpdated = telemetry.LastUpdated
+		}
+
+		// Update temperature sensors with real-time data from the external API
 		if sensor.Type == models.Temperature {
 			tempData, err := h.TemperatureService.GetTemperatureByID(fmt.Sprintf("%d", sensor.ID))
 			if err == nil {
 				// Update sensor with real-time data
-				sensors[i].Value = tempData.Value
-				sensors[i].Status = tempData.Status
-				sensors[i].LastUpdated = tempData.Timestamp
+				sensor.Value = tempData.Value
+				sensor.Status = tempData.Status
+				sensor.LastUpdated = tempData.Timestamp
 				log.Printf("Updated temperature data for sensor %d from external API", sensor.ID)
 			} else {
 				log.Printf("Failed to fetch temperature data for sensor %d: %v", sensor.ID, err)
 			}
 		}
+
+		sensors = append(sensors, sensor)
 	}
 
 	c.JSON(http.StatusOK, sensors)
@@ -77,10 +107,32 @@ func (h *SensorHandler) GetSensorByID(c *gin.Context) {
 		return
 	}
 
-	sensor, err := h.DB.GetSensorByID(context.Background(), id)
+	// Get device from device-registry
+	device, err := h.DeviceService.GetDeviceByID(id)
 	if err != nil {
+		log.Printf("Error getting device from device-registry: %v", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Sensor not found"})
 		return
+	}
+
+	sensor := models.Sensor{
+		ID:          device.ID,
+		Name:        device.Name,
+		Type:        models.SensorType(device.Type),
+		Location:    device.Location,
+		Unit:        device.Unit,
+		Status:      device.Status,
+		LastUpdated: device.LastUpdated,
+		CreatedAt:   device.CreatedAt,
+		Value:       0, // Default value
+	}
+
+	// Get telemetry data for this device
+	telemetry, err := h.TelemetryService.GetTelemetry(id)
+	if err == nil {
+		sensor.Value = telemetry.Value
+		sensor.Status = telemetry.Status
+		sensor.LastUpdated = telemetry.LastUpdated
 	}
 
 	// If this is a temperature sensor, fetch real-time data from the temperature API
@@ -136,10 +188,32 @@ func (h *SensorHandler) CreateSensor(c *gin.Context) {
 		return
 	}
 
-	sensor, err := h.DB.CreateSensor(context.Background(), sensorCreate)
+	// Create device via device-registry
+	deviceCreate := services.DeviceCreate{
+		Name:     sensorCreate.Name,
+		Type:     string(sensorCreate.Type),
+		Location: sensorCreate.Location,
+		Unit:     sensorCreate.Unit,
+	}
+
+	device, err := h.DeviceService.CreateDevice(deviceCreate)
 	if err != nil {
+		log.Printf("Error creating device via device-registry: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Convert device to sensor format
+	sensor := models.Sensor{
+		ID:          device.ID,
+		Name:        device.Name,
+		Type:        models.SensorType(device.Type),
+		Location:    device.Location,
+		Unit:        device.Unit,
+		Status:      device.Status,
+		LastUpdated: device.LastUpdated,
+		CreatedAt:   device.CreatedAt,
+		Value:       0,
 	}
 
 	c.JSON(http.StatusCreated, sensor)
@@ -159,10 +233,43 @@ func (h *SensorHandler) UpdateSensor(c *gin.Context) {
 		return
 	}
 
-	sensor, err := h.DB.UpdateSensor(context.Background(), id, sensorUpdate)
+	// Update device via device-registry
+	deviceUpdate := services.DeviceUpdate{
+		Name:     sensorUpdate.Name,
+		Location: sensorUpdate.Location,
+		Unit:     sensorUpdate.Unit,
+		Status:   sensorUpdate.Status,
+		Value:    sensorUpdate.Value,
+	}
+
+	if sensorUpdate.Type != "" {
+		deviceUpdate.Type = string(sensorUpdate.Type)
+	}
+
+	device, err := h.DeviceService.UpdateDevice(id, deviceUpdate)
 	if err != nil {
+		log.Printf("Error updating device via device-registry: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Convert device to sensor format
+	sensor := models.Sensor{
+		ID:          device.ID,
+		Name:        device.Name,
+		Type:        models.SensorType(device.Type),
+		Location:    device.Location,
+		Unit:        device.Unit,
+		Status:      device.Status,
+		LastUpdated: device.LastUpdated,
+		CreatedAt:   device.CreatedAt,
+		Value:       0,
+	}
+
+	// Get telemetry if available
+	telemetry, err := h.TelemetryService.GetTelemetry(id)
+	if err == nil {
+		sensor.Value = telemetry.Value
 	}
 
 	c.JSON(http.StatusOK, sensor)
@@ -176,8 +283,10 @@ func (h *SensorHandler) DeleteSensor(c *gin.Context) {
 		return
 	}
 
-	err = h.DB.DeleteSensor(context.Background(), id)
+	// Delete device via device-registry
+	err = h.DeviceService.DeleteDevice(id)
 	if err != nil {
+		log.Printf("Error deleting device via device-registry: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -203,8 +312,10 @@ func (h *SensorHandler) UpdateSensorValue(c *gin.Context) {
 		return
 	}
 
-	err = h.DB.UpdateSensorValue(context.Background(), id, request.Value, request.Status)
+	// Update telemetry via telemetry-service
+	err = h.TelemetryService.UpdateTelemetry(id, request.Value, request.Status)
 	if err != nil {
+		log.Printf("Error updating telemetry via telemetry-service: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
